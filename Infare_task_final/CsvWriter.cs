@@ -5,99 +5,131 @@ using System.Text;
 
 namespace Infare_task_final
 {
+    // Handles the creation of CSV files from processed flight data.
     public class CsvWriter
     {
+        // Base path for storing the generated CSV files.
+
         private const string BaseDirectoryPath = @"G:\TestData\"; // Base directory for output files
         private const string BaseFileName = "flight_combinations_"; // Base part of the file name
 
-        // Writing combinations for single itinerary. 
-        public string WriteCombinations(List<FlightCombination> combinations, List<FlightCombination> cheapestCombinations, FlightSearchContext context)
+        // Writes flight combinations and the cheapest combination for a single itinerary to a CSV file.
+
+        public string WriteCombinations(List<FlightCombination> combinations, FlightCombination cheapestCombination, FlightSearchContext context)
         {
-            var lines = new List<string>
-    {
-        "Price,Taxes,outbound 1 airport departure,outbound 1 airport arrival,outbound 1 time departure,outbound 1 time arrival,outbound 1 flight number,outbound 2 airport departure,outbound 2 airport arrival,outbound 2 time departure,outbound 2 time arrival,outbound 2 flight number,inbound 1 airport departure,inbound 1 airport arrival,inbound 1 time departure,inbound 1 time arrival,inbound 1 flight number,inbound 2 airport departure,inbound 2 airport arrival,inbound 2 time departure,inbound 2 time arrival,inbound 2 flight number"
-    };
-
-            
-            // Writing all combinations, placeholder appended if no connection flight found
-            foreach (var combination in combinations)
+            try
             {
-                var line = new StringBuilder();
-                line.Append($"{combination.TotalPrice},{combination.Taxes},");
+                // Prepare the CSV header and initial content lines.
+                var lines = new List<string>
+                {
+                    // CSV header
+                    "Price,Taxes,outbound 1 airport departure,outbound 1 airport arrival,outbound 1 time departure,outbound 1 time arrival,outbound 1 flight number,outbound 2 airport departure,outbound 2 airport arrival,outbound 2 time departure,outbound 2 time arrival,outbound 2 flight number,inbound 1 airport departure,inbound 1 airport arrival,inbound 1 time departure,inbound 1 time arrival,inbound 1 flight number,inbound 2 airport departure,inbound 2 airport arrival,inbound 2 time departure,inbound 2 time arrival,inbound 2 flight number"
+                };
 
-                AppendFlightDetailsOrPlaceholder(combination.OutboundJourney?.Flights ?? new List<Flight>(), line);
-                AppendFlightDetailsOrPlaceholder(combination.InboundJourney?.Flights ?? new List<Flight>(), line);
+                // Add each flight combination to the content lines.
+                foreach (var combination in combinations)
+                {
+                    var line = new StringBuilder();
+                    line.Append($"{combination.TotalPrice},{combination.Taxes},");
 
-                lines.Add(line.ToString());
+                    AppendFlightDetailsOrPlaceholder(combination.OutboundJourney?.Flights ?? new List<Flight>(), line);
+                    AppendFlightDetailsOrPlaceholder(combination.InboundJourney?.Flights ?? new List<Flight>(), line);
+
+                    lines.Add(line.ToString());
+                }
+
+                // Add a section for the cheapest combination.
+                lines.Add("\nCheapest Combinations");
+
+                if (cheapestCombination != null)
+                {
+                    var line = new StringBuilder();
+                    line.Append($"{cheapestCombination.TotalPrice},{cheapestCombination.Taxes},");
+
+                    AppendFlightDetailsOrPlaceholder(cheapestCombination.OutboundJourney?.Flights ?? new List<Flight>(), line);
+                    AppendFlightDetailsOrPlaceholder(cheapestCombination.InboundJourney?.Flights ?? new List<Flight>(), line);
+
+                    lines.Add(line.ToString());
+                }
+
+                // Generate the file name and path based on the context
+                string filePath = GenerateFileName(context);
+
+                // Write all lines to the CSV file
+                File.WriteAllLines(filePath, lines);
+
+                // Return the path of the generated file
+                return filePath;
             }
 
-            // Appending cheapest combinations
-            lines.Add("\nCheapest Combinations");
-            foreach (var cheapest in cheapestCombinations)
+            // Currently, if error occurs the exception message is printed to console.
+            // If (and likely) required, usage of Nlog, Serilog or a different logging framework can be implemented. 
+
+            catch (IOException ex)
             {
-                var line = new StringBuilder();
-                line.Append($"{cheapest.TotalPrice},{cheapest.Taxes},");
-
-                AppendFlightDetailsOrPlaceholder(cheapest.OutboundJourney?.Flights ?? new List<Flight>(), line);
-                AppendFlightDetailsOrPlaceholder(cheapest.InboundJourney?.Flights ?? new List<Flight>(), line);
-
-                lines.Add(line.ToString());
+                // Handle file I/O exceptions
+                Console.WriteLine($"An error occurred while writing to the file: {ex.Message}");
+                return null; // Return null to indicate failure
             }
-
-            string filePath = GenerateFileName(context);
-            File.WriteAllLines(filePath, lines);
-
-            return filePath;
+            catch (Exception ex)
+            {
+                // Handle other exceptions
+                Console.WriteLine($"An unexpected error occurred: {ex.Message}");
+                return null; // Return null to indicate failure
+            }
         }
 
-        // Writing multiple combinations
-        public void WriteMultipleCombinations(IEnumerable<(List<FlightCombination> Combinations, List<FlightCombination> CheapestCombinations, FlightSearchContext Context)> blocks)
+        
+        // Async method for writing multiple combinations
+        public async Task WriteMultipleCombinationsAsync(IEnumerable<(List<FlightCombination> Combinations, FlightCombination CheapestCombination, FlightSearchContext Context)> blocks)
         {
-            string baseFilePath = Path.Combine("G:\\testdata\\", "combined_flight_data");
-            string filePath = $"{baseFilePath}.csv";
-            int fileIndex = 1;
-            while (File.Exists(filePath))
+            try
             {
-                filePath = $"{baseFilePath}_{fileIndex}.csv";
-                fileIndex++;
-            }
-
-            using (var writer = new StreamWriter(filePath, append: true))
-            {
-                foreach (var block in blocks)
+                string baseFilePath = Path.Combine(BaseDirectoryPath, "combined_flight_data");
+                string filePath = $"{baseFilePath}.csv";
+                int fileIndex = 1;
+                while (File.Exists(filePath))
                 {
-                    var combinations = block.Combinations;
-                    var cheapestCombinations = block.CheapestCombinations;
-                    var context = block.Context;
+                    filePath = $"{baseFilePath}_{fileIndex}.csv";
+                    fileIndex++;
+                }
 
-                    // Separator for better readability
-                    writer.WriteLine($"Context: Departure Airport: {context.DepartureAirport}, Arrival Airport: {context.ArrivalAirport}, Outbound Date: {context.OutboundDate:yyyy-MM-dd}, Inbound Date: {context.InboundDate:yyyy-MM-dd}, Connection Airport: {context.ConnectionAirportCode ?? "N/A"}");
-
-                    // Header if it's the first block or file is new
-                    if (new FileInfo(filePath).Length == 0 || blocks.First().Equals(block))
+                using (var writer = new StreamWriter(filePath, append: true))
+                {
+                    foreach (var block in blocks)
                     {
-                        writer.WriteLine("Price,Taxes,outbound 1 airport departure,outbound 1 airport arrival,outbound 1 time departure,outbound 1 time arrival,outbound 1 flight number,outbound 2 airport departure,outbound 2 airport arrival,outbound 2 time departure,outbound 2 time arrival,outbound 2 flight number,inbound 1 airport departure,inbound 1 airport arrival,inbound 1 time departure,inbound 1 time arrival,inbound 1 flight number,inbound 2 airport departure,inbound 2 airport arrival,inbound 2 time departure,inbound 2 time arrival,inbound 2 flight number");
-                    }
+                        await writer.WriteLineAsync($"Context: {block.Context.DepartureAirport} to {block.Context.ArrivalAirport}, Dates: {block.Context.OutboundDate:yyyy-MM-dd} to {block.Context.InboundDate:yyyy-MM-dd}");
 
-                    // Writing all combinations
-                    foreach (var combination in combinations)
-                    {
-                        writer.WriteLine(FormatCombinationLine(combination));
-                    }
+                        // Write the header for each new itinerary block
+                        var header = "Price,Taxes,outbound 1 airport departure,outbound 1 airport arrival,outbound 1 time departure,outbound 1 time arrival,outbound 1 flight number,outbound 2 airport departure,outbound 2 airport arrival,outbound 2 time departure,outbound 2 time arrival,outbound 2 flight number,inbound 1 airport departure,inbound 1 airport arrival,inbound 1 time departure,inbound 1 time arrival,inbound 1 flight number,inbound 2 airport departure,inbound 2 airport arrival,inbound 2 time departure,inbound 2 time arrival,inbound 2 flight number";
+                        await writer.WriteLineAsync(header);
 
-                    // Appending cheapest combinations
-                    writer.WriteLine("\nCheapest Combinations");
-                    foreach (var cheapest in cheapestCombinations)
-                    {
-                        writer.WriteLine(FormatCombinationLine(cheapest));
-                    }
+                        // Writing all combinations for the current itinerary
+                        foreach (var combination in block.Combinations)
+                        {
+                            var line = FormatCombinationLine(combination);
+                            await writer.WriteLineAsync(line);
+                        }
 
-                    // Separator between blocks
-                    if (!blocks.Last().Equals(block))
-                    {
-                        writer.WriteLine("\n--------------------------------------------------------------------------------\n");
+                        // Write the header again before the cheapest combination
+                        await writer.WriteLineAsync("\nCheapest Combination");
+                        await writer.WriteLineAsync(header); // Header repeated for clarity
+
+                        // Writing the cheapest combination for the context
+                        var cheapestLine = FormatCombinationLine(block.CheapestCombination);
+                        await writer.WriteLineAsync(cheapestLine);
+
+                        // Separator between blocks for better readability, if not the last block
+                        if (!blocks.Last().Equals(block))
+                        {
+                            await writer.WriteLineAsync("\n--------------------------------------------------------------------------------\n");
+                        }
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"An error occurred: {ex.Message}");
             }
         }
         //Helper for writing multiple combinations

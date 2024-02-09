@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 
 namespace Infare_task_final
 {
+    // Manages the scraping of flight data from a specified URL.
     public class WebScraper
     {
         public async Task<FlightData> ScrapeFlightData(string url)

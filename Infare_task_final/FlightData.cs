@@ -6,13 +6,13 @@ using System.Threading.Tasks;
 
 namespace Infare_task_final
 {
-    // Class for data structure definition. 
+    // Represents the complete flight data structure.
     public class FlightData
     {
-        public Header Header { get; set; }
-        public Body Body { get; set; }
+        public Header Header { get; set; }  // Contains meta-information about the data.
+        public Body Body { get; set; } // Contains the actual flight data.
     }
-
+    // Additional classes to suit the response
     public class Header
     {
         public string Message { get; set; }

@@ -8,9 +8,12 @@ using static System.Net.Mime.MediaTypeNames;
 
 namespace Infare_task_final
 {
+    // Manages the processing and analysis of flight data, including web scraping and CSV file generation.
     public class FlightDataProcessor
     {
+        // Web scraper for fetching flight data from a specified URL.
         private readonly WebScraper _webScraper;
+        // CSV writer for outputting flight combinations and analysis to CSV files.
         private readonly CsvWriter _csvWriter;
 
         public FlightDataProcessor()
@@ -18,21 +21,22 @@ namespace Infare_task_final
             _webScraper = new WebScraper();
             _csvWriter = new CsvWriter();
         }
-        // Processing and writing data for SINGLE itinerary
+        // Processes a single flight search context, scraping data, generating combinations, and writing to a CSV file.
         public async Task ProcessAndWriteFlightData(FlightSearchContext context)
         {
-            // Scraping the data
+            // Attempt to scrape flight data using the provided context URL.
             var flightData = await _webScraper.ScrapeFlightData(context.Url);
 
             // Assign the scraped flight data to the context
             context.FlightData = flightData;
-
+            // Check if valid flight data was returned.
             if (flightData?.Body?.Data != null)
             {
-                // Making flight combinations
+                // Generate flight combinations based on the scraped data.
                 var flightCombinations = MakeFlightCombinations(flightData);
+                // Identify the cheapest flight combination from those generated.
                 var cheapestCombinations = FindCheapestFlightCombinations(flightCombinations);
-                // Write all combinations to CSV and get the file name
+                // Write the flight combinations and the cheapest combination to a CSV file, returning the file's name.
                 string fileName = _csvWriter.WriteCombinations(flightCombinations, cheapestCombinations, context);
 
                 Console.WriteLine($"Data successfully written to {fileName}");
@@ -46,67 +50,71 @@ namespace Infare_task_final
         // Processing and writing data for MULTIPLE itineraries concurrently. 
         public async Task ProcessAndWriteMultipleFlightData(List<FlightSearchContext> contexts)
         {
-            var blocks = new List<(List<FlightCombination> Combinations, List<FlightCombination> CheapestCombinations, FlightSearchContext Context)>();
+            var scrapingTasks = new List<Task<(FlightData FlightData, FlightSearchContext Context)>>();
 
+            // Initiate scraping tasks for all contexts concurrently
             foreach (var context in contexts)
             {
-                try
+                scrapingTasks.Add(Task.Run(async () =>
                 {
-                    await Task.Delay(1000);
-
-                    var flightData = await _webScraper.ScrapeFlightData(context.Url);
-
-                    if (flightData?.Body?.Data != null)
+                    try
                     {
-                        context.FlightData = flightData; // Attaching the scraped flight data to the context for usage at later stages
-
-                        var flightCombinations = MakeFlightCombinations(flightData);
-                        
-                        var cheapestCombinations = FindCheapestFlightCombinations(flightCombinations);
-
-                        // Adding data to blocks list to satisfy multiple file writing
-                        blocks.Add((flightCombinations, cheapestCombinations, context));
-
-                        Console.WriteLine($"Data for {context.DepartureAirport}-{context.ArrivalAirport} from {context.OutboundDate:yyyy-MM-dd} to {context.InboundDate:yyyy-MM-dd} successfully processed.");
+                        var flightData = await _webScraper.ScrapeFlightData(context.Url);
+                        return (flightData, context);
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        Console.WriteLine($"No valid flight data found for {context.DepartureAirport}-{context.ArrivalAirport} from {context.OutboundDate:yyyy-MM-dd} to {context.InboundDate:yyyy-MM-dd}.");
+                        Console.WriteLine($"An error occurred processing data for {context.DepartureAirport}-{context.ArrivalAirport}: {ex.Message}");
+                        return (null, context); // Return null flightData on error
                     }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"An error occurred processing data for {context.DepartureAirport}-{context.ArrivalAirport}: {ex.Message}");
-                }
+                }));
             }
 
-            // After all data is collected, passing the populated block to write data
+            var results = await Task.WhenAll(scrapingTasks);
+
+            // Prepare data for WriteMultipleCombinationsAsync
+            var blocks = results.Select(result => {
+                var flightCombinations = MakeFlightCombinations(result.FlightData);
+                var cheapestCombinations = FindCheapestFlightCombinations(flightCombinations);
+                return (flightCombinations, cheapestCombinations, result.Context);
+            }).Where(block => block.flightCombinations != null && block.cheapestCombinations != null).ToList();
+
+            // Check if there are any blocks to write
             if (blocks.Any())
             {
-                _csvWriter.WriteMultipleCombinations(blocks);
+                // Call the WriteMultipleCombinationsAsync method with the prepared blocks
+                await _csvWriter.WriteMultipleCombinationsAsync(blocks);
             }
 
             Console.WriteLine("All flight data processing completed.");
         }
-        
+
         // Making Flight Combinations. 
         // Price and tax calculation, constructing flight numbers called within this method. 
 
-        
+
         private List<FlightCombination> MakeFlightCombinations(FlightData flightData)
         {
             var combinations = new List<FlightCombination>();
             var totalPriceMap = flightData.Body.Data.TotalAvailabilities.ToDictionary(k => k.RecommendationId, v => v.Total);
 
+            // Group journeys by RecommendationId to handle them as distinct possible combinations.
             foreach (var journeyGroup in flightData.Body.Data.Journeys.GroupBy(j => j.RecommendationId))
             {
+
+                // Process outbound and inbound journeys separately.
                 var outboundJourneys = journeyGroup.Where(j => j.Direction == "I" && j.Flights.Count <= 2).ToList();
                 var inboundJourneys = journeyGroup.Where(j => j.Direction == "V" && j.Flights.Count <= 2).ToList();
 
+                // Create combinations for each outbound journey.
                 foreach (var outbound in outboundJourneys)
                 {
-                    if (!inboundJourneys.Any()) // Outbound-only combinations
+
+                    // Handle outbound-only combinations if there are no inbound journeys.
+                    if (!inboundJourneys.Any()) 
                     {
+
+                        // Calculate total taxes and price for the combination.
                         double totalTaxes = PricingCalculator.CalculateTaxesForCombination(outbound, null);
                         double basePrice = totalPriceMap.TryGetValue(journeyGroup.Key, out double price) ? price : 0;
                         double fullPrice = PricingCalculator.CalculateFullPriceForCombination(basePrice, totalTaxes); 
@@ -122,8 +130,11 @@ namespace Infare_task_final
                             InboundFlightNumbers = new List<string>()
                         });
                     }
-                    else // Combinations with inbound journeys
+                    else           
+                    
+                    
                     {
+                        // Create combinations with both outbound and inbound journeys.
                         foreach (var inbound in inboundJourneys)
                         {
                             double totalTaxes = PricingCalculator.CalculateTaxesForCombination(outbound, inbound);
@@ -217,19 +228,18 @@ namespace Infare_task_final
         }
 
         // Filtering of cheapest flight combinations for each recommendationId. 
-        private List <FlightCombination> FindCheapestFlightCombinations(List<FlightCombination> combinations)
+        private FlightCombination FindCheapestFlightCombinations(List<FlightCombination> combinations)
         {
-            // Group by RecommendationId and select the cheapest combination within each group
-            var cheapestCombinations = combinations
-                .GroupBy(c => c.RecommendationId)
-                .Select(group => group.OrderBy(c => c.TotalPrice).FirstOrDefault())
-                .ToList(); // Ensure the query is executed and results are materialized
+            // Find the single cheapest combination based on TotalPrice
+            var cheapestCombination = combinations
+                .OrderBy(c => c.TotalPrice)
+                .FirstOrDefault(); // Get the cheapest combination or null if the list is empty
 
-            return cheapestCombinations;
+            return cheapestCombination; 
         }
 
 
 
-        
+
     }
 }

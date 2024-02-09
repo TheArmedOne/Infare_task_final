@@ -6,10 +6,11 @@ using System.Threading.Tasks;
 
 namespace Infare_task_final
 {
+    // Handles calculations related to pricing and taxes for flight combinations.
     public class PricingCalculator
     {
-        // Calculation and return of total taxes
-        
+        // Calculates total taxes for a given flight combination.
+
         public static double CalculateTaxesForCombination(Journey outboundJourney, Journey inboundJourney)
         {
             double totalTaxes = 0;
@@ -28,7 +29,7 @@ namespace Infare_task_final
 
             return Math.Round(totalTaxes, 2);
         }
-        //Calculation of Total Price for flight combination
+        // Calculates the total price for a flight combination, including base price and taxes.
         public static double CalculateFullPriceForCombination(double basePrice, double taxes)
         {
             return Math.Round(basePrice + taxes, 2);

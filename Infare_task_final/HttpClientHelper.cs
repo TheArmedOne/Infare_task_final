@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace Infare_task_final
 {
-    // Class utilize HttpClient
+    // Simplifies HTTP requests and responses handling.
     public static class HttpClientHelper
     {
         private static readonly HttpClient client = new HttpClient();
