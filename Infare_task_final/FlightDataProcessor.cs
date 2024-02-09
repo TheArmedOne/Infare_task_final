@@ -228,15 +228,35 @@ namespace Infare_task_final
         }
 
         // Filtering of cheapest flight combinations for each recommendationId. 
-        private FlightCombination FindCheapestFlightCombinations(List<FlightCombination> combinations)
+        private List<FlightCombination> FindCheapestFlightCombinations(List<FlightCombination> combinations)
         {
-            // Find the single cheapest combination based on TotalPrice
-            var cheapestCombination = combinations
-                .OrderBy(c => c.TotalPrice)
-                .FirstOrDefault(); // Get the cheapest combination or null if the list is empty
+            // This dictionary will hold the cheapest combination for each RecommendationId.
+            var cheapestCombinationsDict = new Dictionary<int, FlightCombination>();
 
-            return cheapestCombination; 
+            foreach (var combination in combinations)
+            {
+                // Check if the RecommendationId already has a recorded combination.
+                if (cheapestCombinationsDict.TryGetValue(combination.RecommendationId, out var currentCheapest))
+                {
+                    // If the current combination is cheaper than the recorded one, update the dictionary.
+                    if (combination.TotalPrice < currentCheapest.TotalPrice)
+                    {
+                        cheapestCombinationsDict[combination.RecommendationId] = combination;
+                    }
+                }
+                else
+                {
+                    // If this is the first combination encountered for this RecommendationId, add it to the dictionary.
+                    cheapestCombinationsDict[combination.RecommendationId] = combination;
+                }
+            }
+
+            // Extract the values from the dictionary to get a list of the cheapest combinations.
+            var cheapestCombinations = cheapestCombinationsDict.Values.ToList();
+
+            return cheapestCombinations;
         }
+
 
 
 

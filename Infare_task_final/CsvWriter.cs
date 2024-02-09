@@ -15,7 +15,7 @@ namespace Infare_task_final
 
         // Writes flight combinations and the cheapest combination for a single itinerary to a CSV file.
 
-        public string WriteCombinations(List<FlightCombination> combinations, FlightCombination cheapestCombination, FlightSearchContext context)
+        public string WriteCombinations(List<FlightCombination> combinations, List<FlightCombination> cheapestCombination, FlightSearchContext context)
         {
             try
             {
@@ -38,16 +38,15 @@ namespace Infare_task_final
                     lines.Add(line.ToString());
                 }
 
-                // Add a section for the cheapest combination.
+                // Add a section for the cheapest combinations.
                 lines.Add("\nCheapest Combinations");
-
-                if (cheapestCombination != null)
+                foreach (var cheapCombination in cheapestCombination)
                 {
                     var line = new StringBuilder();
-                    line.Append($"{cheapestCombination.TotalPrice},{cheapestCombination.Taxes},");
+                    line.Append($"{cheapCombination.TotalPrice},{cheapCombination.Taxes},");
 
-                    AppendFlightDetailsOrPlaceholder(cheapestCombination.OutboundJourney?.Flights ?? new List<Flight>(), line);
-                    AppendFlightDetailsOrPlaceholder(cheapestCombination.InboundJourney?.Flights ?? new List<Flight>(), line);
+                    AppendFlightDetailsOrPlaceholder(cheapCombination.OutboundJourney?.Flights ?? new List<Flight>(), line);
+                    AppendFlightDetailsOrPlaceholder(cheapCombination.InboundJourney?.Flights ?? new List<Flight>(), line);
 
                     lines.Add(line.ToString());
                 }
@@ -79,9 +78,9 @@ namespace Infare_task_final
             }
         }
 
-        
+
         // Async method for writing multiple combinations
-        public async Task WriteMultipleCombinationsAsync(IEnumerable<(List<FlightCombination> Combinations, FlightCombination CheapestCombination, FlightSearchContext Context)> blocks)
+        public async Task WriteMultipleCombinationsAsync(IEnumerable<(List<FlightCombination> Combinations, List<FlightCombination> CheapestCombinations, FlightSearchContext Context)> blocks)
         {
             try
             {
@@ -99,27 +98,24 @@ namespace Infare_task_final
                     foreach (var block in blocks)
                     {
                         await writer.WriteLineAsync($"Context: {block.Context.DepartureAirport} to {block.Context.ArrivalAirport}, Dates: {block.Context.OutboundDate:yyyy-MM-dd} to {block.Context.InboundDate:yyyy-MM-dd}");
+                        await writer.WriteLineAsync("Price,Taxes,outbound 1 airport departure,outbound 1 airport arrival,outbound 1 time departure,outbound 1 time arrival,outbound 1 flight number,outbound 2 airport departure,outbound 2 airport arrival,outbound 2 time departure,outbound 2 time arrival,outbound 2 flight number,inbound 1 airport departure,inbound 1 airport arrival,inbound 1 time departure,inbound 1 time arrival,inbound 1 flight number,inbound 2 airport departure,inbound 2 airport arrival,inbound 2 time departure,inbound 2 time arrival,inbound 2 flight number");
 
-                        // Write the header for each new itinerary block
-                        var header = "Price,Taxes,outbound 1 airport departure,outbound 1 airport arrival,outbound 1 time departure,outbound 1 time arrival,outbound 1 flight number,outbound 2 airport departure,outbound 2 airport arrival,outbound 2 time departure,outbound 2 time arrival,outbound 2 flight number,inbound 1 airport departure,inbound 1 airport arrival,inbound 1 time departure,inbound 1 time arrival,inbound 1 flight number,inbound 2 airport departure,inbound 2 airport arrival,inbound 2 time departure,inbound 2 time arrival,inbound 2 flight number";
-                        await writer.WriteLineAsync(header);
-
-                        // Writing all combinations for the current itinerary
+                        // Writing all combinations
                         foreach (var combination in block.Combinations)
                         {
                             var line = FormatCombinationLine(combination);
                             await writer.WriteLineAsync(line);
                         }
 
-                        // Write the header again before the cheapest combination
-                        await writer.WriteLineAsync("\nCheapest Combination");
-                        await writer.WriteLineAsync(header); // Header repeated for clarity
+                        // Cheapest combinations section
+                        await writer.WriteLineAsync("\nCheapest Combinations");
+                        foreach (var cheapestCombination in block.CheapestCombinations)
+                        {
+                            var cheapestLine = FormatCombinationLine(cheapestCombination);
+                            await writer.WriteLineAsync(cheapestLine);
+                        }
 
-                        // Writing the cheapest combination for the context
-                        var cheapestLine = FormatCombinationLine(block.CheapestCombination);
-                        await writer.WriteLineAsync(cheapestLine);
-
-                        // Separator between blocks for better readability, if not the last block
+                        // Separator for readability
                         if (!blocks.Last().Equals(block))
                         {
                             await writer.WriteLineAsync("\n--------------------------------------------------------------------------------\n");
